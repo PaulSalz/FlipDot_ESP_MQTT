@@ -20,6 +20,13 @@ Super simple sketch for controlling a 16x112 Mobitec FlipDot bus display via MQT
     - When no Wi-Fi/MQTT is available, the controller switches to local BLE mode for basic control
     - Tested with a PS4 controller
 
+# HomeAssistant Device info
+<div align="center">
+<p>
+  <img src="media/HASS_controls.png" width="60%" height="100%">
+</p>
+</div>
+
 ## TO-DO
 - Add more options for how the text is arranged and displayed
 - OTA updates
@@ -35,5 +42,15 @@ Big thanks to Nosen92 and prefixFelix for their incredible work and documentatio
 <div align="center">
 <p>
   <img src="media/slomo.gif" width="60%" height="100%">
+</p>
+</div>
+  
+# Connection Diagramm
+<div align="center">
+<p>  
   <img alt="Connections Diagram" src="media/controller.png" width="100%" height="100%">
 </p>
+</div>
+Input: 20-30V DC
+
+
