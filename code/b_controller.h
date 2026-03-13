@@ -61,7 +61,7 @@
           loop_state = 1;
         }
         if(try_wifi){
-          publishStateControls(true);
+          publishStates(true);
         }
         Serial.printf("PS4: mode=%d\n", stateValue);
       }

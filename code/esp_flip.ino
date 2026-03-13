@@ -77,14 +77,7 @@ bool b_tgl = false;
 //--------------------------------------------------------------------------------------------------------------------------------
 
   void loop() {
-    if(try_wifi){
-      ensureMqtt();
-      mqtt.loop();
-      handleTimeSync();
-    }
-    else{
-      handle_controller();
-    }
+    check_connection();    
 
 
     switch (loop_state) {
@@ -142,7 +135,7 @@ bool b_tgl = false;
             font_mode = 0;
             state_font = 0;
             switch_font(font_mode);
-            publishState_font(true);
+            publishStates(true);
           }          
           tls_case[loop_state] = millis();          
           if(state_ttt){

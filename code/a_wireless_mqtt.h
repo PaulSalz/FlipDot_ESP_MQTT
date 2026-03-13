@@ -71,6 +71,9 @@ class Bitmap;
   String text2Value = "Hello World!2";
   bool textDirty = true;  
 
+  const char* T_SELECT_MODE_SET   = "rollo/mode/set";
+  const char* T_SELECT_MODE_STATE = "rollo/mode/state";
+
   const char* AVAIL_TOPIC = "flipdot/availability";
   const char* HA_STATUS_TOPIC = "homeassistant/status";
   const char* DISCOVERY_PREFIX = "homeassistant";
@@ -291,19 +294,32 @@ void publishDiscovery() {
   mqtt.publish(tx2.c_str(), px2.c_str(), true);
   mqtt.publish(ty2.c_str(), py2.c_str(), true);
 
+  String t_mode_select = String(DISCOVERY_PREFIX) + "/select/" + id + "/mode/config";
+  String p_mode_select =
+    String("{") +
+    "\"name\":\"Modus\"," +
+    "\"unique_id\":\"" + id + "_mode\"," +
+    "\"command_topic\":\"" + String(T_SELECT_MODE_SET) + "\"," +
+    "\"state_topic\":\"" + String(T_SELECT_MODE_STATE) + "\"," +
+    "\"options\":[\"Static Text\",\"Blinking Text\",\"Wipe\",\"Christmas\"]," +
+    "\"availability_topic\":\"" + String(AVAIL_TOPIC) + "\"," +
+    "\"payload_available\":\"online\",\"payload_not_available\":\"offline\"," +
+    devObj +
+    "}";
+
+  mqtt.publish(t_mode_select.c_str(), p_mode_select.c_str(), true);
+
 }
 void applyRelay(int pin, bool on) {
   on = !on;
   if (RELAY_ACTIVE_LOW) digitalWrite(pin, on ? LOW : HIGH);
   else digitalWrite(pin, on ? HIGH : LOW);
 }
-void publishStateControls(bool retain=true) {
+void publishStates(bool retain=true) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%d", stateValue);
   mqtt.publish(T_NUM_STATE_STATE, buf, retain);
-}
-void publishState_xy(bool retain=true) {
-  char buf[16];
+
   snprintf(buf, sizeof(buf), "%d", state_x);
   mqtt.publish(T_NUM_X_STATE_STATE, buf, retain);
 
@@ -315,23 +331,17 @@ void publishState_xy(bool retain=true) {
 
   snprintf(buf, sizeof(buf), "%d", state_y2);
   mqtt.publish(T_NUM_Y2_STATE_STATE, buf, retain);
-}
-void publishState_rate(bool retain=true) {
-  char buf[16];
+
   snprintf(buf, sizeof(buf), "%d", state_rate);
   mqtt.publish(T_NUM_RATE_STATE_STATE, buf, retain);
-}
-void publishState_font(bool retain=true) {
-  char buf[16];
+
   snprintf(buf, sizeof(buf), "%d", state_font);
   mqtt.publish(T_NUM_FONT_STATE_STATE, buf, retain);
 
   snprintf(buf, sizeof(buf), "%d", state_font2);
   mqtt.publish(T_NUM_FONT2_STATE_STATE, buf, retain);
-}
-void publishStates(bool retain = true) {
-  mqtt.publish(T_RELAY1_STATE, relay1_On ? "ON" : "OFF", retain);
 
+  mqtt.publish(T_RELAY1_STATE, relay1_On ? "ON" : "OFF", retain);
   mqtt.publish(T_BTN_TTT_STATE, state_ttt ? "ON" : "OFF", retain);
 }
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -342,26 +352,21 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
 
   if (t == T_TEXT_SET) {
-    // NICHT trimmen, sonst verschwinden Leerzeichen am Anfang/Ende
     textValue = msg;
-    // HA text max = 255 (optional clamp)
     if (textValue.length() > 255) textValue = textValue.substring(0, 255);
     textDirty = true;
-    // State zurückmelden (retained)
     mqtt.publish(T_TEXT_STATE, textValue.c_str(), true);
     return;
   }
   if (t == T_TEXT2_SET) {
-    // NICHT trimmen, sonst verschwinden Leerzeichen am Anfang/Ende
     text2Value = msg;
-    // HA text max = 255 (optional clamp)
     if (text2Value.length() > 255) text2Value = text2Value.substring(0, 255);
     textDirty = true;
-    // State zurückmelden (retained)
     mqtt.publish(T_TEXT2_STATE, text2Value.c_str(), true);
     return;
   }
   msg.trim();
+
   if (t == HA_STATUS_TOPIC) {
     if (msg == "online") {
       publishDiscovery();
@@ -369,41 +374,40 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     }
     return;
   }
-  bool new_state;
-  if (msg == "ON" || msg == "1" || msg == "true") new_state = true;
-  else if (msg == "OFF" || msg == "0" || msg == "false") new_state = false;
+  bool msg_state;
+  if (msg == "ON" || msg == "1" || msg == "true") msg_state = true;
+  else if (msg == "OFF" || msg == "0" || msg == "false") msg_state = false;
 
-  if (t == T_RELAY1_SET) {
-    relay1_On = new_state;
+  if (t == T_RELAY1_SET) {  //lights
+    relay1_On = msg_state;
     applyRelay(RELAY1_PIN, relay1_On);
     mqtt.publish(T_RELAY1_STATE, relay1_On ? "ON" : "OFF", true);
     textDirty = true;
   }
-  if (t == T_BTN_TTT_SET) {
-    state_ttt = new_state;
+  if (t == T_BTN_TTT_SET) { //TTT
+    state_ttt = msg_state;
     mqtt.publish(T_BTN_TTT_STATE, state_ttt ? "ON" : "OFF", true);
     textDirty = true;
   }
-  else if (t == T_BTN_APPLY_CMD) { // Button: Apply 
+  else if (t == T_BTN_APPLY_CMD) { // Button: restart 
     //Serial.printf("Apply pressed\n");
     ESP.restart();
     return;
   }
-  else if (t == T_BTN_180) { // Button
+  else if (t == T_BTN_180) { // Button 180
     //Serial.printf("180 pressed\n");
     last_loop_state = loop_state;
     loop_state = 180;
     textDirty = true;
     return;
   }
-  else if (t == T_NUM_STATE_SET) {// Number: State set
+  else if (t == T_NUM_STATE_SET) {// Number: loop State 
     int v = msg.toInt();           
     if (v < 0) v = 0;
     if (v > 10) v = 10;
     stateValue = v;
     loop_state = stateValue;
-    publishStateControls(true);
-    //Serial.printf("loop_state=%d\n", loop_state);
+    publishStates(true);
     tls_prt_dbg = millis();
     textDirty = true;
     return;
@@ -413,7 +417,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (v < 0) v = 0;
     if (v > 112) v = 112;
     state_x = v;
-    publishState_xy(true);
+    publishStates(true);
     textDirty = true;
     return;
   }
@@ -422,25 +426,25 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (v < -13) v = 0;
     if (v > 16) v = 16;
     state_y = v;
-    publishState_xy(true);
+    publishStates(true);
     textDirty = true;
     return;
   } 
-  else if (t == T_NUM_X2_STATE_SET) {// X
+  else if (t == T_NUM_X2_STATE_SET) {// X 2
     int v = msg.toInt();           
     if (v < 0) v = 0;
     if (v > 112) v = 112;
     state_x2 = v;
-    publishState_xy(true);
+    publishStates(true);
     textDirty = true;
     return;
   }
-  else if (t == T_NUM_Y2_STATE_SET) {// Y 
+  else if (t == T_NUM_Y2_STATE_SET) {// Y 2 
     int v = msg.toInt();           
     if (v < -13) v = 0;
     if (v > 16) v = 16;
     state_y2 = v;
-    publishState_xy(true);
+    publishStates(true);
     textDirty = true;
     return;
   }        
@@ -450,30 +454,49 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (v > 60000) v = 0;
     state_rate = v;
     update_rate = v;
-    publishState_rate(true);
+    publishStates(true);
     textDirty = true;
     return;
   }  
-  else if (t == T_NUM_FONT_STATE_SET) {// update rate
+  else if (t == T_NUM_FONT_STATE_SET) {// font 1
     int v = msg.toInt();           
     if (v < 0) v = 0;
     if (v > 8) v = 0;
     state_font = v;
     font_mode = v;
-    publishState_font(true);
+    publishStates(true);
     textDirty = true;
     return;
   }  
-  else if (t == T_NUM_FONT2_STATE_SET) {// update rate
+  else if (t == T_NUM_FONT2_STATE_SET) {// font 2
     int v = msg.toInt();           
     if (v < 0) v = 0;
     if (v > 8) v = 0;
     state_font2 = v;
     font2_mode = v;
-    publishState_font(true);
+    publishStates(true);
     textDirty = true;
     return;
   } 
+  else if (t == T_SELECT_MODE_SET) {  //new mode select
+    if (msg == "Static Text") {
+      loop_state = 1;
+    }
+    else if (msg == "Blinking Text") {
+      loop_state = 2;
+    }
+    else if (msg == "Wipe") {
+      loop_state = 3;
+    }
+    else if (msg == "Christmas") {
+      loop_state = 4;
+    }
+    else{
+      loop_state = 0;
+    }
+    mqtt.publish(T_SELECT_MODE_STATE, msg.c_str(), true);
+    return;
+  }
 }
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
@@ -482,8 +505,8 @@ void connectWiFi() {
   try_wifi = true;
 
   while (WiFi.status() != WL_CONNECTED  && try_wifi) {
-    //Serial.printf("Connecting...\n");
-    delay(250);
+    Serial.printf("Connecting...\n");
+    delay(50);
     if(millis() - tls_wifi > 20000){
       try_wifi = false;
     }
@@ -528,10 +551,6 @@ void ensureMqtt() {
       mqtt.subscribe(T_BTN_TTT_SET);
       mqtt.subscribe(HA_STATUS_TOPIC);
 
-      publishStateControls(true);
-      publishState_xy(true);
-      publishState_rate(true);
-      publishState_font(true);
       publishStates(true);
 
       mqtt.publish(T_TEXT_STATE, textValue.c_str(), true);
@@ -548,8 +567,25 @@ void ensureMqtt() {
     }
   }
 }
-
-
+void check_connection(){
+  if(try_wifi){
+    if (WiFi.status() == WL_CONNECTED) {
+      if (mqtt.connected()) {
+        mqtt.loop();
+        handleTimeSync();
+      } 
+      else {     
+        if (millis() - lastTry > 2000) {
+          lastTry = millis();
+          ensureMqtt();
+        }
+      }
+    }
+  }
+  else{
+    handle_controller();
+  }  
+}  
 
 
 
