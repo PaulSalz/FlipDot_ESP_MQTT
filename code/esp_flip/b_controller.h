@@ -29,7 +29,7 @@
       bool Y = gp->y();   
       if (B && !prevB) {
         if(try_wifi){
-          mqtt.publish(T_BTN_180, "PRESS", false);
+          //mqtt.publish(T_BTN_180, "PRESS", false);
         }
         else{
           last_loop_state = loop_state;
@@ -48,10 +48,10 @@
       if (A && !prevA) {
         relay1_On = !relay1_On;
         if(try_wifi){
-          mqtt.publish(T_RELAY1_SET, relay1_On ? "ON" : "OFF", false);
+          //mqtt.publish(T_RELAY1_SET, relay1_On ? "ON" : "OFF", false);
         }
         else{
-          applyRelay(RELAY1_PIN, relay1_On);
+          //applyRelay(RELAY1_PIN, relay1_On);
         }
         Serial.println("PS4: A");
       }
@@ -61,9 +61,9 @@
           loop_state = 1;
         }
         if(try_wifi){
-          publishStates(true);
+          //publishStates(true);
         }
-        Serial.printf("PS4: mode=%d\n", stateValue);
+        //Serial.printf("PS4: mode=%d\n", stateValue);
       }
       prevA = A; prevB = B; prevX = X; prevY = Y;
     }

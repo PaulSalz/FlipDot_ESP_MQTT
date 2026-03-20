@@ -16,9 +16,12 @@ bool try_wifi = true;
 long tls_wifi = 0;
 long tls_prt_dbg = 0;
 long tls_font = 0;
+long lastTry = 0;
 long tls_case[7] = {0};
 long tls_interval = 500, update_rate = 0;
 bool b_tgl = false;
+bool textDirty = true; 
+bool relay1_On = true;
 
 #include "c_display.h"
 #include "a_wireless_mqtt.h"
@@ -41,14 +44,11 @@ bool b_tgl = false;
     Serial.printf("Starting WIFI\n");
     if(try_wifi){
       connectWiFi();
-      Serial.println(WiFi.localIP());
-      Serial.println(WiFi.gatewayIP());
-      Serial.println(WiFi.status());
       single_msg("Wifi done");
       delay(500);
       single_msg("MQTT . . .");
       mqtt.setServer(MQTT_HOST, MQTT_PORT);
-      mqtt.setBufferSize(mqtt_buf);
+      mqtt.setBufferSize(MQTT_BUFFER_SIZE);
       mqtt.setCallback(mqttCallback);
       ensureMqtt();
       single_msg("CONNECTED");
@@ -78,14 +78,11 @@ bool b_tgl = false;
 
   void loop() {
     check_connection();    
-
-
     switch (loop_state) {
-      case 0:// Clock
+      case 0:// Clock big
         if(millis()-tls_case[loop_state] > 50 + update_rate){
           tls_case[loop_state] = millis();
-          switch_font(font_mode);
-          showClockOnFlipdot();
+          ClockwithText(update_rate);
           flipdot.show();
         }
         break;  
@@ -93,15 +90,23 @@ bool b_tgl = false;
         if(millis()-tls_case[loop_state] > tls_interval + update_rate){
           tls_case[loop_state] = millis();       
           if(b_tgl) {
-            flipdot.setPosition(state_x, state_y);
-            switch_font(font_mode);
-            if(state_ttt){
-              showClockOnFlipdot();
+            if(state_TimeinText){
+              //combined
+              ClockwithText(update_rate);
+              flipdot.show();
             }
             else{
+              //row1
+              flipdot.clearBuffer();
+              switch_font(font_mode);
+              flipdot.setPosition(state_x, state_y);
               flipdot.printText(textValue);
-            }
-            flipdot.show();
+              //row2
+              switch_font(font2_mode);
+              flipdot.setPosition(state_x2, state_y2);
+              flipdot.printText(text2Value);
+              flipdot.show();
+            }   
           }
           else{
             flipdot.clearBuffer();
@@ -110,37 +115,12 @@ bool b_tgl = false;
           b_tgl = !b_tgl;
         }
         break;
-      case 2:// text single
-        if(millis()-tls_case[loop_state] > tls_interval){
-          tls_case[loop_state] = millis();    
-          if (textDirty) {
-            switch_font(font_mode);
-            if(state_ttt){
-              textDirty = true;
-              showClockOnFlipdot();
-            }
-            else{
-              textDirty = false;
-              flipdot.clearBuffer();
-              flipdot.setPosition(state_x, state_y);
-              flipdot.printText(textValue);
-            }  
-            flipdot.show();
-          }
-        }
-        break;  
-      case 3:// text double
-        if(millis()-tls_case[loop_state] > 50 + update_rate){
-          if(font_mode > 1){
-            font_mode = 0;
-            state_font = 0;
-            switch_font(font_mode);
-            publishStates(true);
-          }          
-          tls_case[loop_state] = millis();          
-          if(state_ttt){
+      case 2:// text static
+        if(millis()-tls_case[loop_state] > 50 + update_rate){       
+          tls_case[loop_state] = millis();  
+          if(state_TimeinText){
             //combined
-            showClockOnFlipdot();
+            ClockwithText(update_rate);
           }
           else{
             //row1
@@ -156,7 +136,7 @@ bool b_tgl = false;
           flipdot.show();
         }
         break;
-      case 4:// Xmas und Bäume
+      case 3:// Xmas und Bäume
         if(millis()-tls_case[loop_state] > tls_interval + update_rate){
           tls_case[loop_state] = millis();  
           switch_font(4);    
@@ -180,7 +160,7 @@ bool b_tgl = false;
         }
         break;
 
-      case 5:// Full on
+      case 4:// Full on
         if(millis()-tls_case[loop_state] > tls_interval){
           flipdot.clearBuffer();
           tls_case[loop_state] = millis();
@@ -222,7 +202,6 @@ bool b_tgl = false;
         break;
     }
   }
-
 
 
 //--------------------------------------------------------------------------------------------------------------------------------
