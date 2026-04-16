@@ -22,19 +22,31 @@ long tls_interval = 500, update_rate = 0;
 bool b_tgl = false;
 bool textDirty = true; 
 bool relay1_On = true;
+static unsigned long lastDiagUpdate = 0;
 
+#include "z_diagnostics.h"
 #include "c_display.h"
 #include "a_wireless_mqtt.h"
 #include "b_controller.h" 
 #include "d_time.h" 
 
 
+
 //--------------------------------------------------------------------------------------------------------------------------------
   
   void setup() {
-    drawBMfull(bmFull);
     Serial.begin(115200);
-    delay(1500);
+    delay(2500);
+
+    diagBegin();
+    Serial.printf("\n\nHello World\n");
+    Serial.printf("Boot count: %u\n", bootInfo.bootCount);
+    Serial.printf("Reset reason: %s\n",
+      resetReasonToText((esp_reset_reason_t)bootInfo.lastResetReason));
+    Serial.printf("Planned reboot cause: %s\n",
+      rebootCauseToText(bootInfo.plannedRebootCause));
+
+    drawBMfull(bmFull);
     flipdot.begin(4800, UART_RX_PIN, UART_TX_PIN);
     Serial.printf("\n\nHello World\n");
     pinMode(RELAY1_PIN, OUTPUT);
@@ -44,16 +56,16 @@ bool relay1_On = true;
     Serial.printf("Starting WIFI\n");
     if(try_wifi){
       connectWiFi();
-      single_msg("Wifi done");
+      //single_msg("Wifi done");
       delay(500);
-      single_msg("MQTT . . .");
+      //single_msg("MQTT . . .");
       mqtt.setServer(MQTT_HOST, MQTT_PORT);
       mqtt.setBufferSize(MQTT_BUFFER_SIZE);
       mqtt.setCallback(mqttCallback);
       ensureMqtt();
       single_msg("CONNECTED");
       initTimeNTP();
-      single_msg("NTP Time ok");
+      //single_msg("NTP Time ok");
       delay(1000);
     }
     else{
@@ -78,6 +90,8 @@ bool relay1_On = true;
 
   void loop() {
     check_connection();    
+
+
     switch (loop_state) {
       case 0:// Clock big
         if(millis()-tls_case[loop_state] > 50 + update_rate){
@@ -201,6 +215,15 @@ bool relay1_On = true;
         }
         break;
     }
+
+    if (mqtt.connected() && millis() - lastDiagUpdate > 60000UL) {
+      lastDiagUpdate = millis();
+
+      char buf[16];
+      snprintf(buf, sizeof(buf), "%lu", millis() / 1000UL);
+      mqtt.publish(T_DIAG_UPTIME, buf, true);
+    }
+
   }
 
 

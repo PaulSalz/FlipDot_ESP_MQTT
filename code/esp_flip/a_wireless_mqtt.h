@@ -30,6 +30,15 @@ class Bitmap;
     const char* HA_STATUS_TOPIC = "homeassistant/status";
     const char* DISCOVERY_PREFIX = "homeassistant";
 
+  // Home Assistant DIAG topics  
+
+    const char* T_DIAG_BOOT_JSON    = "flipdot/diag/boot";
+    const char* T_DIAG_RESET_REASON = "flipdot/diag/reset_reason";
+    const char* T_DIAG_REBOOT_CAUSE = "flipdot/diag/reboot_cause";
+    const char* T_DIAG_MQTT_STATE   = "flipdot/diag/last_mqtt_state";
+    const char* T_DIAG_BOOT_COUNT   = "flipdot/diag/boot_count";
+    const char* T_DIAG_UPTIME       = "flipdot/diag/uptime_s";
+
   // MQTT command/state topics
   // Relay
     const char* T_RELAY1_SET   = "flipdot/relay1/set";
@@ -90,11 +99,11 @@ class Bitmap;
     int stateValue = start_mode;
 
     int state_x = 29;
-    int state_y = 0;
+    int state_y = -5;
     int state_x2 = 0;
-    int state_y2 = 0;
+    int state_y2 = 3;
 
-    int state_updateRate = 15;
+    int state_updateRate = 5;
     int state_font = 5;
     int state_font2 = 0;
 
@@ -120,6 +129,24 @@ PubSubClient mqtt(wifiClient);
 
 bool isEven(long n){
   return n % 2 == 0;
+}
+void publishDiagnostics(bool retain = true) {
+  mqtt.publish(T_DIAG_BOOT_JSON, bootSummaryJson().c_str(), retain);
+  mqtt.publish(T_DIAG_RESET_REASON,
+               resetReasonToText((esp_reset_reason_t)bootInfo.lastResetReason), retain);
+  mqtt.publish(T_DIAG_REBOOT_CAUSE,
+               rebootCauseToText(bootInfo.plannedRebootCause), retain);
+
+  char buf[16];
+
+  snprintf(buf, sizeof(buf), "%u", bootInfo.bootCount);
+  mqtt.publish(T_DIAG_BOOT_COUNT, buf, retain);
+
+  snprintf(buf, sizeof(buf), "%d", bootInfo.lastMqttState);
+  mqtt.publish(T_DIAG_MQTT_STATE, buf, retain);
+
+  snprintf(buf, sizeof(buf), "%lu", millis() / 1000UL);
+  mqtt.publish(T_DIAG_UPTIME, buf, retain);
 }
 String devId() {
   return "flipdot_" + String((uint32_t)ESP.getEfuseMac(), HEX);
@@ -260,6 +287,22 @@ void publishDiscovery() {
           "}";
       };
 
+    // Helper: DIAG
+      auto makeSensorPayload = [&](const String& name,
+                             const String& uniqueId,
+                             const String& stateTopic,
+                             const String& extra = "") -> String {
+        return String("{") +
+          "\"name\":\"" + name + "\"," +
+          "\"unique_id\":\"" + uniqueId + "\"," +
+          "\"state_topic\":\"" + stateTopic + "\"," +
+          "\"entity_category\":\"diagnostic\"," +
+          availabilityJson +
+          extra +
+          deviceJson +
+          "}";
+      };
+
 
   // Topics
 
@@ -288,124 +331,164 @@ void publishDiscovery() {
     // Select topics
     const String t_mode         = discoveryTopic("select", "mode");
 
+    //DIAG
+    const String t_diag_reset   = discoveryTopic("sensor", "diag_reset_reason");
+    const String t_diag_reboot  = discoveryTopic("sensor", "diag_reboot_cause");
+    const String t_diag_mqtt    = discoveryTopic("sensor", "diag_last_mqtt_state");
+    const String t_diag_boots   = discoveryTopic("sensor", "diag_boot_count");
+    const String t_diag_uptime  = discoveryTopic("sensor", "diag_uptime");
+
   // Payloads
-  // Switch payloads
-    const String p_sw_ttt = makeSwitchPayload(
-      "Time To Text 1",
-      id + "_sw_ttt",
-      String(T_SW_TTT_SET),
-      String(T_SW_TTT_STATE)
-    );
+    // Switch payloads
+      const String p_sw_ttt = makeSwitchPayload(
+        "Time To Text 1",
+        id + "_sw_ttt",
+        String(T_SW_TTT_SET),
+        String(T_SW_TTT_STATE)
+      );
 
-    const String p_relay1 = makeSwitchPayload(
-      "LIGHTS",
-      id + "_relay1",
-      String(T_RELAY1_SET),
-      String(T_RELAY1_STATE)
-    );
+      const String p_relay1 = makeSwitchPayload(
+        "LIGHTS",
+        id + "_relay1",
+        String(T_RELAY1_SET),
+        String(T_RELAY1_STATE)
+      );
 
-    const String p_sw_showsec = makeSwitchPayload(
-      "Show Seconds",
-      id + "_sw_showsec",
-      String(T_SW_SHOWSEC_SET),
-      String(T_SW_SHOWSEC_STATE)
-    );
+      const String p_sw_showsec = makeSwitchPayload(
+        "Show Seconds",
+        id + "_sw_showsec",
+        String(T_SW_SHOWSEC_SET),
+        String(T_SW_SHOWSEC_STATE)
+      );
 
-  // Button payloads
-    const String p_btn_180 = makeButtonPayload(
-      "180",
-      id + "_180",
-      String(T_BTN_180)
-    );
+    // Button payloads
+      const String p_btn_180 = makeButtonPayload(
+        "180",
+        id + "_180",
+        String(T_BTN_180)
+      );
 
-    const String p_btn_restart = makeButtonPayload(
-      "Restart",
-      id + "_restart",
-      String(T_BTN_RESTART)
-    );
+      const String p_btn_restart = makeButtonPayload(
+        "Restart",
+        id + "_restart",
+        String(T_BTN_RESTART)
+      );
 
-  // Number payloads
-    const String p_font = makeNumberPayload(
-      "Font",
-      id + "_state_font",
-      String(T_NUM_FONT_STATE_SET),
-      String(T_NUM_FONT_STATE_STATE),
-      0, 8, 1
-    );
+    // Number payloads
+      const String p_font = makeNumberPayload(
+        "Font",
+        id + "_state_font",
+        String(T_NUM_FONT_STATE_SET),
+        String(T_NUM_FONT_STATE_STATE),
+        0, 8, 1
+      );
 
-    const String p_font2 = makeNumberPayload(
-      "Font Row 2",
-      id + "_state_font2",
-      String(T_NUM_FONT2_STATE_SET),
-      String(T_NUM_FONT2_STATE_STATE),
-      0, 8, 1
-    );
+      const String p_font2 = makeNumberPayload(
+        "Font Row 2",
+        id + "_state_font2",
+        String(T_NUM_FONT2_STATE_SET),
+        String(T_NUM_FONT2_STATE_STATE),
+        0, 8, 1
+      );
 
-    const String p_rate = makeNumberPayload(
-      "Update_rate",
-      id + "_state_updateRate",
-      String(T_NUM_RATE_STATE_SET),
-      String(T_NUM_RATE_STATE_STATE),
-      0, 60, 1
-    );
+      const String p_rate = makeNumberPayload(
+        "Update_rate",
+        id + "_state_updateRate",
+        String(T_NUM_RATE_STATE_SET),
+        String(T_NUM_RATE_STATE_STATE),
+        0, 60, 1
+      );
 
-    const String p_x1 = makeNumberPayload(
-      "Pos_x",
-      id + "_state_x",
-      String(T_NUM_X_STATE_SET),
-      String(T_NUM_X_STATE_STATE),
-      0, 112, 1
-    );
+      const String p_x1 = makeNumberPayload(
+        "Pos_x",
+        id + "_state_x",
+        String(T_NUM_X_STATE_SET),
+        String(T_NUM_X_STATE_STATE),
+        0, 112, 1
+      );
 
-    const String p_x2 = makeNumberPayload(
-      "Pos_x_2",
-      id + "_state_x2",
-      String(T_NUM_X2_STATE_SET),
-      String(T_NUM_X2_STATE_STATE),
-      0, 112, 1
-    );
+      const String p_x2 = makeNumberPayload(
+        "Pos_x_2",
+        id + "_state_x2",
+        String(T_NUM_X2_STATE_SET),
+        String(T_NUM_X2_STATE_STATE),
+        0, 112, 1
+      );
 
-    const String p_y1 = makeNumberPayload(
-      "Pos_y",
-      id + "_state_y",
-      String(T_NUM_Y_STATE_SET),
-      String(T_NUM_Y_STATE_STATE),
-      -13, 16, 1
-    );
+      const String p_y1 = makeNumberPayload(
+        "Pos_y",
+        id + "_state_y",
+        String(T_NUM_Y_STATE_SET),
+        String(T_NUM_Y_STATE_STATE),
+        -13, 16, 1
+      );
 
-    const String p_y2 = makeNumberPayload(
-      "Pos_y_2",
-      id + "_state_y2",
-      String(T_NUM_Y2_STATE_SET),
-      String(T_NUM_Y2_STATE_STATE),
-      -13, 16, 1
-    );
+      const String p_y2 = makeNumberPayload(
+        "Pos_y_2",
+        id + "_state_y2",
+        String(T_NUM_Y2_STATE_SET),
+        String(T_NUM_Y2_STATE_STATE),
+        -13, 16, 1
+      );
 
-    // Text payloads
-    const String p_text1 = makeTextPayload(
-      "Row 1 Text",
-      id + "_row_1_text",
-      String(T_TEXT_SET),
-      String(T_TEXT_STATE),
-      64
-    );
+      // Text payloads
+      const String p_text1 = makeTextPayload(
+        "Row 1 Text",
+        id + "_row_1_text",
+        String(T_TEXT_SET),
+        String(T_TEXT_STATE),
+        64
+      );
 
-    const String p_text2 = makeTextPayload(
-      "Row 2 Text",
-      id + "_row_2_text",
-      String(T_TEXT2_SET),
-      String(T_TEXT2_STATE),
-      64
-    );
+      const String p_text2 = makeTextPayload(
+        "Row 2 Text",
+        id + "_row_2_text",
+        String(T_TEXT2_SET),
+        String(T_TEXT2_STATE),
+        64
+      );
 
-  // Select payloads
-    const String p_mode = makeSelectPayload(
-      "Modus",
-      id + "_mode",
-      String(T_SELECT_MODE_SET),
-      String(T_SELECT_MODE_STATE),
-      modeOptionsJson
-    );
+    // Select payloads
+      const String p_mode = makeSelectPayload(
+        "Modus",
+        id + "_mode",
+        String(T_SELECT_MODE_SET),
+        String(T_SELECT_MODE_STATE),
+        modeOptionsJson
+      );
+
+    //DIAG payloads
+        const String p_diag_reset = makeSensorPayload(
+          "Reset Reason",
+          id + "_diag_reset_reason",
+          String(T_DIAG_RESET_REASON)
+        );
+
+        const String p_diag_reboot = makeSensorPayload(
+          "Reboot Cause",
+          id + "_diag_reboot_cause",
+          String(T_DIAG_REBOOT_CAUSE)
+        );
+
+        const String p_diag_mqtt = makeSensorPayload(
+          "Last MQTT State",
+          id + "_diag_last_mqtt_state",
+          String(T_DIAG_MQTT_STATE)
+        );
+
+        const String p_diag_boots = makeSensorPayload(
+          "Boot Count",
+          id + "_diag_boot_count",
+          String(T_DIAG_BOOT_COUNT),
+          "\"state_class\":\"measurement\","
+        );
+
+        const String p_diag_uptime = makeSensorPayload(
+          "Uptime",
+          id + "_diag_uptime",
+          String(T_DIAG_UPTIME),
+          "\"unit_of_measurement\":\"s\",\"state_class\":\"measurement\","
+        );
 
 
   // Publish
@@ -434,6 +517,13 @@ void publishDiscovery() {
 
     // Select
     publishConfig(t_mode,      p_mode);
+
+    //DIAG
+    publishConfig(t_diag_reset,  p_diag_reset);
+    publishConfig(t_diag_reboot, p_diag_reboot);
+    publishConfig(t_diag_mqtt,   p_diag_mqtt);
+    publishConfig(t_diag_boots,  p_diag_boots);
+    publishConfig(t_diag_uptime, p_diag_uptime);
 }
 void applyRelay(int pin, bool on) {
   on = !on;
@@ -500,6 +590,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (msg == "online") {
       publishDiscovery();
       publishStates(true);
+      publishDiagnostics(true);
     }
     return;
   }
@@ -525,6 +616,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
   else if (t == T_BTN_RESTART) { // Button: restart 
     //Serial.printf("Apply pressed\n");
+    markPlannedRestart(REBOOT_MANUAL_CMD, mqtt.state());
     ESP.restart();
     return;
   }
@@ -698,6 +790,8 @@ void ensureMqtt() {
     mqtt.publish(AVAIL_TOPIC, "online", true);
     publishDiscovery();
 
+    publishDiagnostics(true);
+
     mqttWasConnected = true;
     mqttDisconnectedSince = 0;
 
@@ -706,6 +800,7 @@ void ensureMqtt() {
   else {
     Serial.printf("mqtt connect failed, rc=%d\n", mqtt.state());
     if (!mqttWasConnected) {
+      markPlannedRestart(REBOOT_MQTT_FIRST_CONNECT_FAIL, mqtt.state());
       ESP.restart();
       return;
     }
@@ -714,6 +809,7 @@ void ensureMqtt() {
     }
 
     if (millis() - mqttDisconnectedSince >= 300000UL) {
+      markPlannedRestart(REBOOT_MQTT_TIMEOUT_5MIN, mqtt.state());
       ESP.restart();
       return;
     }
@@ -738,6 +834,25 @@ void check_connection(){
     handle_controller();
   }  
 }  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
